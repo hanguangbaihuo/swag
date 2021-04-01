@@ -44,6 +44,9 @@ var (
 
 	// ErrFailedConvertPrimitiveType Failed to convert for swag to interpretable type
 	ErrFailedConvertPrimitiveType = errors.New("swag property: failed convert primitive type")
+
+	//ErrMissingMarkdownFile failed to find markdown file
+	ErrMissingMarkdownFile = errors.New("Unable to find markdown file")
 )
 
 // Parser implements a parser for Go source files.
@@ -279,11 +282,26 @@ func (parser *Parser) ParseGeneralAPIInfo(mainAPIFile string) error {
 				}
 				parser.swagger.Info.Description = value
 			case "@description.markdown":
-				commentInfo, err := getMarkdownForTag("api", parser.markdownFileDir)
-				if err != nil {
-					return err
+				searchMarkdownFileDir := []string{"./"}
+				if parser.markdownFileDir != "" {
+					searchMarkdownFileDir = append(searchMarkdownFileDir, parser.markdownFileDir)
 				}
-				parser.swagger.Info.Description = string(commentInfo)
+				found := false
+				for _, dir := range searchMarkdownFileDir {
+					commentInfo, err := getMarkdownForTag(value, dir)
+					if err == ErrMissingMarkdownFile {
+						continue
+					}
+					if err != nil {
+						return err
+					}
+					parser.swagger.Info.Description = string(commentInfo)
+					found = true
+					break
+				}
+				if !found {
+					return errors.New("Unable to find markdown file for name %s", value)
+				}
 			case "@termsofservice":
 				parser.swagger.Info.TermsOfService = value
 			case "@contact.name":
@@ -526,7 +544,8 @@ func getMarkdownForTag(tagName string, dirPath string) ([]byte, error) {
 			return commentInfo, nil
 		}
 	}
-	return nil, fmt.Errorf("Unable to find markdown file for tag %s in the given directory", tagName)
+	return nil, ErrMissingMarkdownFile
+	// return nil, fmt.Errorf("Unable to find markdown file for tag %s in the given directory", tagName)
 }
 
 func getScopeScheme(scope string) (string, error) {

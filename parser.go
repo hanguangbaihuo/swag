@@ -300,7 +300,7 @@ func (parser *Parser) ParseGeneralAPIInfo(mainAPIFile string) error {
 					break
 				}
 				if !found {
-					return errors.New("Unable to find markdown file for name %s", value)
+					return fmt.Errorf("Unable to find markdown file for name %s", value)
 				}
 			case "@termsofservice":
 				parser.swagger.Info.TermsOfService = value

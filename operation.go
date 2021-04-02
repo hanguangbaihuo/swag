@@ -93,11 +93,26 @@ func (operation *Operation) ParseComment(comment string, astFile *ast.File) erro
 	case "@description":
 		operation.ParseDescriptionComment(lineRemainder)
 	case "@description.markdown":
-		commentInfo, err := getMarkdownForTag(lineRemainder, operation.parser.markdownFileDir)
-		if err != nil {
-			return err
+		searchMarkdownFileDir := []string{"./"}
+		if operation.parser.markdownFileDir != "" {
+			searchMarkdownFileDir = append(searchMarkdownFileDir, operation.parser.markdownFileDir)
 		}
-		operation.ParseDescriptionComment(string(commentInfo))
+		found := false
+		for _, dir := range searchMarkdownFileDir {
+			commentInfo, err := getMarkdownForTag(lineRemainder, dir)
+			if err == ErrMissingMarkdownFile {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			operation.ParseDescriptionComment(string(commentInfo))
+			found = true
+			break
+		}
+		if !found {
+			return fmt.Errorf("Unable to find markdown file for name %s", lineRemainder)
+		}
 	case "@summary":
 		operation.Summary = lineRemainder
 	case "@id":

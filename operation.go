@@ -93,26 +93,32 @@ func (operation *Operation) ParseComment(comment string, astFile *ast.File) erro
 	case "@description":
 		operation.ParseDescriptionComment(lineRemainder)
 	case "@description.markdown":
-		searchMarkdownFileDir := []string{"./"}
-		if operation.parser.markdownFileDir != "" {
-			searchMarkdownFileDir = append(searchMarkdownFileDir, operation.parser.markdownFileDir)
+		commentInfo, err := operation.parser.getMarkdownFile(lineRemainder)
+		if err != nil {
+			return err
 		}
-		found := false
-		for _, dir := range searchMarkdownFileDir {
-			commentInfo, err := getMarkdownForTag(lineRemainder, dir)
-			if err == ErrMissingMarkdownFile {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			operation.ParseDescriptionComment(string(commentInfo))
-			found = true
-			break
-		}
-		if !found {
-			return fmt.Errorf("Unable to find markdown file for name %s", lineRemainder)
-		}
+		operation.ParseDescriptionComment(commentInfo)
+
+		// searchMarkdownFileDir := []string{"./"}
+		// if operation.parser.markdownFileDir != "" {
+		// 	searchMarkdownFileDir = append(searchMarkdownFileDir, operation.parser.markdownFileDir)
+		// }
+		// found := false
+		// for _, dir := range searchMarkdownFileDir {
+		// 	commentInfo, err := getMarkdownForTag(lineRemainder, dir)
+		// 	if err == ErrMissingMarkdownFile {
+		// 		continue
+		// 	}
+		// 	if err != nil {
+		// 		return err
+		// 	}
+		// 	operation.ParseDescriptionComment(string(commentInfo))
+		// 	found = true
+		// 	break
+		// }
+		// if !found {
+		// 	return fmt.Errorf("Unable to find markdown file for name %s", lineRemainder)
+		// }
 	case "@summary":
 		operation.Summary = lineRemainder
 	case "@id":

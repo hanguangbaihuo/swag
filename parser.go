@@ -282,26 +282,32 @@ func (parser *Parser) ParseGeneralAPIInfo(mainAPIFile string) error {
 				}
 				parser.swagger.Info.Description = value
 			case "@description.markdown":
-				searchMarkdownFileDir := []string{"./"}
-				if parser.markdownFileDir != "" {
-					searchMarkdownFileDir = append(searchMarkdownFileDir, parser.markdownFileDir)
+				commentInfo, err := parser.getMarkdownFile(value)
+				if err != nil {
+					return err
 				}
-				found := false
-				for _, dir := range searchMarkdownFileDir {
-					commentInfo, err := getMarkdownForTag(value, dir)
-					if err == ErrMissingMarkdownFile {
-						continue
-					}
-					if err != nil {
-						return err
-					}
-					parser.swagger.Info.Description = string(commentInfo)
-					found = true
-					break
-				}
-				if !found {
-					return fmt.Errorf("Unable to find markdown file for name %s", value)
-				}
+				parser.swagger.Info.Description = commentInfo
+
+				// searchMarkdownFileDir := []string{"./"}
+				// if parser.markdownFileDir != "" {
+				// 	searchMarkdownFileDir = append(searchMarkdownFileDir, parser.markdownFileDir)
+				// }
+				// found := false
+				// for _, dir := range searchMarkdownFileDir {
+				// 	commentInfo, err := getMarkdownForTag(value, dir)
+				// 	if err == ErrMissingMarkdownFile {
+				// 		continue
+				// 	}
+				// 	if err != nil {
+				// 		return err
+				// 	}
+				// 	parser.swagger.Info.Description = string(commentInfo)
+				// 	found = true
+				// 	break
+				// }
+				// if !found {
+				// 	return fmt.Errorf("Unable to find markdown file for name %s", value)
+				// }
 			case "@termsofservice":
 				parser.swagger.Info.TermsOfService = value
 			case "@contact.name":
@@ -546,6 +552,19 @@ func getMarkdownForTag(tagName string, dirPath string) ([]byte, error) {
 	}
 	return nil, ErrMissingMarkdownFile
 	// return nil, fmt.Errorf("Unable to find markdown file for tag %s in the given directory", tagName)
+}
+
+func (parser *Parser) getMarkdownFile(value string) (string, error) {
+	dir, fileName := filepath.Split(value)
+	searchDir := parser.markdownFileDir
+	if dir != "" {
+		searchDir = dir
+	}
+	commentInfo, err := getMarkdownForTag(fileName, searchDir)
+	if err != nil {
+		return "", err
+	}
+	return string(commentInfo), nil
 }
 
 func getScopeScheme(scope string) (string, error) {

@@ -1,6 +1,7 @@
 package swag
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,6 +48,13 @@ var (
 
 	//ErrMissingMarkdownFile failed to find markdown file
 	ErrMissingMarkdownFile = errors.New("Unable to find markdown file")
+)
+
+var (
+	// markdown file head map to data
+	MarkDownFileData = map[string]string{}
+	// filename map to markdown file data
+	FileNameMap = map[string]map[string]string{}
 )
 
 // Parser implements a parser for Go source files.
@@ -526,6 +534,8 @@ func handleSecuritySchemaExtensions(providedExtensions map[string]interface{}) s
 }
 
 func getMarkdownForTag(tagName string, dirPath string) ([]byte, error) {
+	// tagName maybe is "api.md# first api doc" or "api.md"
+	//TODO:
 	filesInfos, err := ioutil.ReadDir(dirPath)
 	if err != nil {
 		return nil, err
@@ -565,6 +575,36 @@ func (parser *Parser) getMarkdownFile(value string) (string, error) {
 		return "", err
 	}
 	return string(commentInfo), nil
+}
+
+// convert markdown file to map[head]content
+func convertMarkdownFileToMap(filename string) (map[string]string, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var data = map[string]string{}
+	var eachContent, eachTitle string
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#") {
+			if eachTitle != "" {
+				data[eachTitle] = eachContent
+				eachContent = ""
+			}
+			head := strings.TrimSpace(line)
+			titles := strings.SplitN(head, " ", 2)
+			eachTitle = titles[len(titles)-1]
+			eachContent += head + "\n"
+		} else {
+			eachContent += line + "\n"
+		}
+	}
+	data[eachTitle] = eachContent
+	return data, scanner.Err()
 }
 
 func getScopeScheme(scope string) (string, error) {

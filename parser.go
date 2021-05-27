@@ -52,9 +52,9 @@ var (
 
 var (
 	// markdown file head map to data
-	MarkDownFileData = map[string]string{}
+	// MarkDownFileData = map[string]string{}
 	// filename map to markdown file data
-	FileNameMap = map[string]map[string]string{}
+	FileNameMap = map[string]*map[string]string{}
 )
 
 // Parser implements a parser for Go source files.
@@ -565,16 +565,61 @@ func getMarkdownForTag(tagName string, dirPath string) ([]byte, error) {
 }
 
 func (parser *Parser) getMarkdownFile(value string) (string, error) {
-	dir, fileName := filepath.Split(value)
-	searchDir := parser.markdownFileDir
-	if dir != "" {
-		searchDir = dir
+	content := strings.TrimSpace(value)
+	dir, leftVaule := filepath.Split(content)
+	data := strings.SplitN(leftVaule, "@", 2)
+	// no router name specified or empty router name tag
+	if len(data) < 2 || data[1] == "" {
+		var fullPath string = content
+		if dir == "" {
+			fullPath = filepath.Join(parser.markdownFileDir, content)
+		}
+		commentInfo, err := ioutil.ReadFile(fullPath)
+		if err != nil {
+			return "", fmt.Errorf("Failed to read markdown file %s error: %s ", fullPath, err)
+		}
+		return string(commentInfo), nil
 	}
-	commentInfo, err := getMarkdownForTag(fileName, searchDir)
+	// specified @router name after description.markdown tag
+	// data[0] is file name, data[1] is router tag name
+	data[0] = strings.TrimSpace(data[0])
+	data[1] = strings.TrimSpace(data[1])
+	var fullPath string
+	if dir == "" {
+		fullPath = filepath.Join(parser.markdownFileDir, data[0])
+	} else {
+		fullPath = filepath.Join(dir, data[0])
+	}
+	// TODO：find data in map
+	fileData, ok := FileNameMap[fullPath]
+	if ok {
+		apiData, ok := (*fileData)[data[1]]
+		if ok {
+			delete(*fileData, data[1])
+			return apiData, nil
+		} else {
+			return "", fmt.Errorf("not found %s title in file %s", data[1], fullPath)
+		}
+	}
+	newfileData, err := convertMarkdownFileToMap(fullPath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Failed to convert file to map: %s error: %s ", fullPath, err)
 	}
-	return string(commentInfo), nil
+	FileNameMap[fullPath] = &newfileData
+	apiData, ok := newfileData[data[1]]
+	if ok {
+		// delete the title data
+		delete(newfileData, data[1])
+		return apiData, nil
+	} else {
+		return "", fmt.Errorf("not found %s title in file %s", data[1], fullPath)
+	}
+
+	// commentInfo, err := ioutil.ReadFile(fullPath)
+	// if err != nil {
+	// 	return "", fmt.Errorf("Failed to read markdown file %s error: %s ", fullPath, err)
+	// }
+	// return string(commentInfo), nil
 }
 
 // convert markdown file to map[head]content
@@ -590,15 +635,15 @@ func convertMarkdownFileToMap(filename string) (map[string]string, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "#") {
+		if strings.HasPrefix(line, "@") {
 			if eachTitle != "" {
 				data[eachTitle] = eachContent
 				eachContent = ""
 			}
-			head := strings.TrimSpace(line)
-			titles := strings.SplitN(head, " ", 2)
-			eachTitle = titles[len(titles)-1]
-			eachContent += head + "\n"
+			eachTitle = strings.TrimSpace(strings.TrimPrefix(line, "@"))
+			// titles := strings.SplitN(head, " ", 2)
+			// eachTitle = titles[len(titles)-1]
+			// eachContent += head + "\n"
 		} else {
 			eachContent += line + "\n"
 		}

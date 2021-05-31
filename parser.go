@@ -1,6 +1,7 @@
 package swag
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,6 +45,16 @@ var (
 
 	// ErrFailedConvertPrimitiveType Failed to convert for swag to interpretable type
 	ErrFailedConvertPrimitiveType = errors.New("swag property: failed convert primitive type")
+
+	//ErrMissingMarkdownFile failed to find markdown file
+	ErrMissingMarkdownFile = errors.New("Unable to find markdown file")
+)
+
+var (
+	// markdown file head map to data
+	// MarkDownFileData = map[string]string{}
+	// filename map to markdown file data
+	FileNameMap = map[string]*map[string]string{}
 )
 
 // Parser implements a parser for Go source files.
@@ -279,11 +290,32 @@ func (parser *Parser) ParseGeneralAPIInfo(mainAPIFile string) error {
 				}
 				parser.swagger.Info.Description = value
 			case "@description.markdown":
-				commentInfo, err := getMarkdownForTag("api", parser.markdownFileDir)
+				commentInfo, err := parser.getMarkdownFile(value)
 				if err != nil {
 					return err
 				}
-				parser.swagger.Info.Description = string(commentInfo)
+				parser.swagger.Info.Description = commentInfo
+
+				// searchMarkdownFileDir := []string{"./"}
+				// if parser.markdownFileDir != "" {
+				// 	searchMarkdownFileDir = append(searchMarkdownFileDir, parser.markdownFileDir)
+				// }
+				// found := false
+				// for _, dir := range searchMarkdownFileDir {
+				// 	commentInfo, err := getMarkdownForTag(value, dir)
+				// 	if err == ErrMissingMarkdownFile {
+				// 		continue
+				// 	}
+				// 	if err != nil {
+				// 		return err
+				// 	}
+				// 	parser.swagger.Info.Description = string(commentInfo)
+				// 	found = true
+				// 	break
+				// }
+				// if !found {
+				// 	return fmt.Errorf("Unable to find markdown file for name %s", value)
+				// }
 			case "@termsofservice":
 				parser.swagger.Info.TermsOfService = value
 			case "@contact.name":
@@ -502,6 +534,8 @@ func handleSecuritySchemaExtensions(providedExtensions map[string]interface{}) s
 }
 
 func getMarkdownForTag(tagName string, dirPath string) ([]byte, error) {
+	// tagName maybe is "api.md# first api doc" or "api.md"
+	//TODO:
 	filesInfos, err := ioutil.ReadDir(dirPath)
 	if err != nil {
 		return nil, err
@@ -526,7 +560,96 @@ func getMarkdownForTag(tagName string, dirPath string) ([]byte, error) {
 			return commentInfo, nil
 		}
 	}
-	return nil, fmt.Errorf("Unable to find markdown file for tag %s in the given directory", tagName)
+	return nil, ErrMissingMarkdownFile
+	// return nil, fmt.Errorf("Unable to find markdown file for tag %s in the given directory", tagName)
+}
+
+func (parser *Parser) getMarkdownFile(value string) (string, error) {
+	content := strings.TrimSpace(value)
+	dir, leftVaule := filepath.Split(content)
+	data := strings.SplitN(leftVaule, "@", 2)
+	// no router name specified or empty router name tag
+	if len(data) < 2 || data[1] == "" {
+		var fullPath string = content
+		if dir == "" {
+			fullPath = filepath.Join(parser.markdownFileDir, content)
+		}
+		commentInfo, err := ioutil.ReadFile(fullPath)
+		if err != nil {
+			return "", fmt.Errorf("Failed to read markdown file %s error: %s ", fullPath, err)
+		}
+		return string(commentInfo), nil
+	}
+	// specified @router name after description.markdown tag
+	// data[0] is file name, data[1] is router tag name
+	data[0] = strings.TrimSpace(data[0])
+	data[1] = strings.TrimSpace(data[1])
+	var fullPath string
+	if dir == "" {
+		fullPath = filepath.Join(parser.markdownFileDir, data[0])
+	} else {
+		fullPath = filepath.Join(dir, data[0])
+	}
+	// TODO：find data in map
+	fileData, ok := FileNameMap[fullPath]
+	if ok {
+		apiData, ok := (*fileData)[data[1]]
+		if ok {
+			delete(*fileData, data[1])
+			return apiData, nil
+		} else {
+			return "", fmt.Errorf("not found %s title in file %s", data[1], fullPath)
+		}
+	}
+	newfileData, err := convertMarkdownFileToMap(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("Failed to convert file to map: %s error: %s ", fullPath, err)
+	}
+	FileNameMap[fullPath] = &newfileData
+	apiData, ok := newfileData[data[1]]
+	if ok {
+		// delete the title data
+		delete(newfileData, data[1])
+		return apiData, nil
+	} else {
+		return "", fmt.Errorf("not found %s title in file %s", data[1], fullPath)
+	}
+
+	// commentInfo, err := ioutil.ReadFile(fullPath)
+	// if err != nil {
+	// 	return "", fmt.Errorf("Failed to read markdown file %s error: %s ", fullPath, err)
+	// }
+	// return string(commentInfo), nil
+}
+
+// convert markdown file to map[head]content
+func convertMarkdownFileToMap(filename string) (map[string]string, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var data = map[string]string{}
+	var eachContent, eachTitle string
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "@") {
+			if eachTitle != "" {
+				data[eachTitle] = eachContent
+				eachContent = ""
+			}
+			eachTitle = strings.TrimSpace(strings.TrimPrefix(line, "@"))
+			// titles := strings.SplitN(head, " ", 2)
+			// eachTitle = titles[len(titles)-1]
+			// eachContent += head + "\n"
+		} else {
+			eachContent += line + "\n"
+		}
+	}
+	data[eachTitle] = eachContent
+	return data, scanner.Err()
 }
 
 func getScopeScheme(scope string) (string, error) {
